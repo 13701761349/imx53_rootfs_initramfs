@@ -1,0 +1,108 @@
+#!/bin/sh
+
+[ -d /dev ] || mkdir -m 0755 /dev
+[ -d /root ] || mkdir -m 0700 /root
+[ -d /sys ] || mkdir /sys
+[ -d /proc ] || mkdir /proc
+[ -d /tmp ] || mkdir /tmp
+mkdir -p /var/lock
+echo "mount -t sysfs -o nodev,noexec,nosuid none /sys"
+mount -t sysfs -o nodev,noexec,nosuid none /sys 
+echo "mount -t proc -o nodev,noexec,nosuid none /proc "
+mount -t proc -o nodev,noexec,nosuid none /proc 
+
+# Note that this only becomes /dev on the real filesystem if udev's scripts
+# are used; which they will be, but it's worth pointing out
+if ! mount -t devtmpfs -o mode=0755 none /dev; then
+	mount -t tmpfs -o mode=0755 none /dev
+	#echo "mknod -m 0600 /dev/console c 5 1"
+	#mknod -m 0600 /dev/console c 5 1
+	#mknod /dev/null c 1 3
+	# Make some basic devices first, let udev handle the rest
+	mknod /dev/null c 1 3
+	mknod /dev/ptmx c 5 2
+	mknod /dev/console c 5 1
+	mknod /dev/kmsg c 1 11
+fi
+
+mkdir /dev/pts
+mount -t devpts -o noexec,nosuid,gid=5,mode=0620 none /dev/pts || true
+mdev -s
+
+
+
+
+
+
+
+
+
+cmdline=$(cat /proc/cmdline)
+echo $cmdline
+
+update=$(cat /proc/cmdline |grep update=1)
+echo $update
+
+inand=$(cat /proc/cmdline |grep mmcblk0p1)
+echo $inand
+
+sdcard=$(cat /proc/cmdline |grep mmcblk1p1)
+echo $sdcard
+
+nfsroot=$(cat /proc/cmdline |grep "/dev/nfs")
+echo $nfsroot
+
+
+
+
+if [ "$update" != "" ] && [ "$nfsroot" = "" ];then
+	echo "update"
+	/linuxrc
+else
+	echo " not update"
+
+
+
+	mkdir /dirrootfs
+
+
+	if [ "$inand" != "" ];then
+		echo "boot from inand "
+		mount /dev/mmcblk0p1	/dirrootfs
+	fi
+
+	if [ "$sdcard" != "" ];then
+		echo "boot from sdcard "
+		mount /dev/mmcblk1p1	/dirrootfs
+	fi
+	
+	if [ "$nfsroot" != "" ];then
+		echo "boot from nfs "
+
+		pos=`awk 'BEGIN{print match("'"$cmdline"'","nfsroot=")}'`
+
+		pos=`expr $pos \+ 7`
+		substr=${cmdline:$pos}
+
+		pos2=`awk 'BEGIN{print match("'"$substr"'",",")}'`
+		pos2=`expr $pos2 \- 1`
+
+		rootdev=${cmdline:$pos:$pos2}
+echo $rootdev
+		#mount -t nfs 192.168.1.111:/home/vmuser/ltib/ltib/rootfs /dirrootfs -o nolock,tcp
+		mount -t nfs $rootdev /dirrootfs -o nolock,tcp
+	fi
+
+
+	#go real root
+	echo "switch_root /dirrootfs /sbin/init"
+	exec switch_root /dirrootfs /sbin/init
+fi
+
+
+
+
+
+
+
+
